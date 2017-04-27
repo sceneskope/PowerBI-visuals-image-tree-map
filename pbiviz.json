@@ -4,8 +4,8 @@
         "displayName": "ImageTreeMap",
         "guid": "imageTreeMap443548DAC1934925ABE9E44F37E00076",
         "visualClassName": "Visual",
-        "version": "1.0.0",
-        "description": "",
+        "version": "1.0.1",
+        "description": "Image tree map",
         "supportUrl": "",
         "gitHubUrl": ""
     },
