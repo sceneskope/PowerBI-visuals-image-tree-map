@@ -223,7 +223,7 @@ module powerbi.extensibility.visual {
 
 
                 const range = viewModel.dataMax - viewModel.dataMin;
-                const min = range === 0 ? 0 : (viewModel.dataMin - (range * 0.1));
+                const min = range === 0 ? 0 : Math.round((viewModel.dataMin - (range * 0.1)));
                 const treemap = d3.layout.treemap<ChartDataPointNode>()
                     .mode("squarify")
                     .size([width, height])
@@ -302,7 +302,7 @@ module powerbi.extensibility.visual {
         private getTooltipData(node: ChartDataPointNode) {
             return [{
                 displayName: node.datapoint.category,
-                value: this.formatter.format(node.value),
+                value: this.formatter.format(node.datapoint.value),
                 color: node.datapoint.color
             }];
         }
