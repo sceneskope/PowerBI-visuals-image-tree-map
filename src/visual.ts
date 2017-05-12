@@ -29,9 +29,9 @@ module powerbi.extensibility.visual {
             const svg = this.svg = d3.select(options.element)
                 .append("svg")
                 .classed("imageTreeMap", true);
+            this.defs = svg.append("defs");
             this.container = svg.append("g")
                 .classed("container", true);
-            this.defs = svg.append("defs");
         }
 
         public update(options: VisualUpdateOptions) {
@@ -80,23 +80,23 @@ module powerbi.extensibility.visual {
                 patterns
                     .enter()
                     .append("pattern")
-                    .append("image");
+                    .attr("patternUnits", "userSpaceOnUse")
+                    .attr("id", d => d.datapoint.uri)
+                    .append("image")
+                    .attr("xlink:href", d => d.datapoint.imageUrl);
 
                 patterns
                     .attr("patternContentUnits", settings.image.resize ? "objectBoundingBox" : "userSpaceOnUse")
-                    .attr("patternUnits", "userSpaceOnUse")
                     .attr("width", settings.image.resize ? "100%" : imageWidth)
                     .attr("height", settings.image.resize ? "100%" : imageHeight)
-                    .attr("id", d => d.datapoint.uri)
                     .select("image")
+                    .attr("x", 0)
+                    .attr("y", 0)
                     .attr("width", settings.image.resize ? 1 : imageWidth)
                     .attr("height", settings.image.resize ? 1 : imageHeight)
-                    .attr("preserveAspectRatio", settings.image.resize ? "none" : "xMinYMin slice")
-                    .attr("xlink:href", d => d.datapoint.imageUrl);
+                    .attr("preserveAspectRatio", settings.image.resize ? "none" : "xMinYMin slice");
 
                 patterns.exit()
-                    .transition()
-                    .duration(3)
                     .remove();
 
 
@@ -106,7 +106,6 @@ module powerbi.extensibility.visual {
                 cells
                     .enter()
                     .append("rect")
-                    .classed("cell", true);
 
                 cells
                     .attr("transform", d => `translate(${d.x}, ${d.y})`)
@@ -122,13 +121,11 @@ module powerbi.extensibility.visual {
                         } else {
                             return 1;
                         }
-                    });
+                    })
+                    ;
 
                 if (useImages) {
                     cells
-                        .transition()
-                        .delay(1)
-                        .duration(2)
                         .attr("fill", d => `url(#${d.datapoint.uri})`);
                 }
                 else {
@@ -137,8 +134,6 @@ module powerbi.extensibility.visual {
                 }
 
                 cells.exit()
-                    .transition()
-                    .duration(1)
                     .remove();
 
                 this.tooltipServiceWrapper.addTooltip(this.container.selectAll(".cell"),
