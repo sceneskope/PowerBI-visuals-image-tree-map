@@ -42,7 +42,7 @@ module powerbi.extensibility.visual {
 
                 const width = options.viewport.width;
                 const height = options.viewport.height;
-                const radius = Math.min(width, height) / 2;
+                const radius = Math.min(width, height) / 4;
 
                 this.svg.attr({
                     width: width,
@@ -56,50 +56,6 @@ module powerbi.extensibility.visual {
                 const useImages = viewModel.hasImageUrls && settings.image.show;
 
 
-                if (useImages) {
-                    const imageWidth = radius;
-                    const imageHeight = (imageWidth / 1024) * 768;
-                    const fixedPatterns = this.defs
-                        .selectAll(".fixedPattern")
-                        .data(viewModel.dataPoints);
-
-                    const resizedPatterns = this.defs
-                        .selectAll(".resizedPattern")
-                        .data(viewModel.dataPoints);
-
-                    fixedPatterns
-                        .enter()
-                        .append("pattern")
-                        .attr("class", "fixedPattern")
-                        .attr("patternUnits", "userSpaceOnUse")
-                        .attr("width", imageWidth)
-                        .attr("height", imageHeight)
-                        .attr("id", d => `fixed-${d.datapoint.uri}`)
-                        .append("image")
-                        .attr("width", imageWidth)
-                        .attr("height", imageHeight)
-                        .attr("xlink:href", d => d.datapoint.imageUrl);
-
-                    fixedPatterns.exit()
-                        .remove();
-
-                    resizedPatterns
-                        .enter()
-                        .append("pattern")
-                        .attr("class", "resizedPattern")
-                        .attr("patternUnits", "userSpaceOnUse")
-                        .attr("width", imageWidth)
-                        .attr("height", imageWidth)
-                        .attr("id", d => `resize-${d.datapoint.uri}`)
-                        .append("image")
-                        .attr("width", imageWidth)
-                        .attr("height", imageWidth)
-                        .attr("xlink:href", d => d.datapoint.imageUrl);
-
-                    resizedPatterns.exit()
-                        .remove();
-                }
-
 
                 const range = viewModel.dataMax - viewModel.dataMin;
                 const min = range === 0 ? 0 : Math.round((viewModel.dataMin - (range * 0.1)));
@@ -111,9 +67,41 @@ module powerbi.extensibility.visual {
 
                 const root = { children: dataPoints };
                 const nodes = treemap.nodes(root);
+                const points = nodes[0].children as ChartDataPointNode[];
+                const patternPoints = useImages ? points : [];
+
+                const imageWidth = radius;
+                const imageHeight = (imageWidth / 1024) * 768;
+
+                const patterns = this.defs
+                    .selectAll("pattern")
+                    .data(patternPoints);
+
+                patterns
+                    .enter()
+                    .append("pattern")
+                    .append("image");
+
+                patterns
+                    .attr("patternContentUnits", settings.image.resize ? "objectBoundingBox" : "userSpaceOnUse")
+                    .attr("patternUnits", "userSpaceOnUse")
+                    .attr("width", settings.image.resize ? "100%" : imageWidth)
+                    .attr("height", settings.image.resize ? "100%" : imageHeight)
+                    .attr("id", d => d.datapoint.uri)
+                    .select("image")
+                    .attr("width", settings.image.resize ? 1 : imageWidth)
+                    .attr("height", settings.image.resize ? 1 : imageHeight)
+                    .attr("preserveAspectRatio", settings.image.resize ? "none" : "xMinYMin slice")
+                    .attr("xlink:href", d => d.datapoint.imageUrl);
+
+                patterns.exit()
+                    .transition()
+                    .duration(3)
+                    .remove();
+
 
                 const cells = this.container.selectAll(".cell")
-                    .data(nodes);
+                    .data(points);
 
                 cells
                     .enter()
@@ -126,29 +114,22 @@ module powerbi.extensibility.visual {
                     .attr("height", d => d.dy)
                     .attr("fill-opacity", d => {
                         if (d.datapoint) {
-                        if ((d.datapoint.highlighted === undefined) || d.datapoint.highlighted) {
-                            return viewModel.settings.generalView.opacity / 100;
+                            if ((d.datapoint.highlighted === undefined) || d.datapoint.highlighted) {
+                                return viewModel.settings.generalView.opacity / 100;
+                            } else {
+                                return Visual.Config.transparentOpacity
+                            }
                         } else {
-                            return Visual.Config.transparentOpacity
-                        }
-                        } else {
-                            return 0;
+                            return 1;
                         }
                     });
 
                 if (useImages) {
                     cells
-                        .attr("fill", d => {
-                            if (d.datapoint) {
-                                if (d.datapoint.resize) {
-                                    return `url(#resize-${d.datapoint.uri})`;
-                                } else {
-                                    return `url(#fixed-${d.datapoint.uri})`;
-                                }
-                            } else {
-                                return "#000000";
-                            }
-                        });
+                        .transition()
+                        .delay(1)
+                        .duration(2)
+                        .attr("fill", d => `url(#${d.datapoint.uri})`);
                 }
                 else {
                     cells
@@ -156,6 +137,8 @@ module powerbi.extensibility.visual {
                 }
 
                 cells.exit()
+                    .transition()
+                    .duration(1)
                     .remove();
 
                 this.tooltipServiceWrapper.addTooltip(this.container.selectAll(".cell"),

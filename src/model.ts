@@ -10,7 +10,6 @@ module powerbi.extensibility.visual {
         uri: string;
         color: string;
         imageUrl?: string;
-        resize: boolean;
         highlighted?: boolean;
         selectionId: ISelectionId;
     }
@@ -58,6 +57,7 @@ module powerbi.extensibility.visual {
 
         const dataPoints: ChartDataPointNode[] = [];
 
+        const uriPrefix = settings.image.resize ? "resized" : "fixed";
         let dataMax: number | undefined = undefined;
         let dataMin: number | undefined = undefined;
         let dataSum: number = 0;
@@ -85,11 +85,10 @@ module powerbi.extensibility.visual {
                 const color = host.colorPalette.getColor(name).value;
                 const datapoint = {
                     category: name,
-                    uri: encodeURIComponent(name),
+                    uri: `${uriPrefix}-${encodeURIComponent(name)}`,
                     value: value,
                     color: color,
                     imageUrl: imageUrl,
-                    resize: settings.image.resize,
                     highlighted: highlighted,
                     selectionId: host.createSelectionIdBuilder()
                         .withCategory(category, i)

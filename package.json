@@ -1,6 +1,6 @@
 {
     "name": "sceneskope-image-tree-map",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "A tree map that uses images as well as colours",
     "repository": {
         "type": "git",
