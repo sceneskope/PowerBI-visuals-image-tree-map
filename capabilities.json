@@ -1,5 +1,6 @@
 {
-    "dataRoles": [{
+    "dataRoles": [
+        {
             "name": "Image",
             "kind": "Grouping",
             "displayName": "Image URL",
@@ -24,33 +25,46 @@
         ],
         "categorical": {
             "categories": {
-                "for": { "in": "Series" },
+                "select": [
+                {
+                    "bind": {
+                        "to": "Series"
+                    }
+                },
+                {
+                    "bind": {
+                        "to": "Image"
+                    }
+                }
+                ],
                 "dataReductionAlgorithm": { "top": {} }
             },
             "values": {
-                "group": {
-                    "by": "Image",
-                    "dataReductionAlgorithm": { "top": {} },
-                    "select": [
-                        { "bind": { "to": "Y" } }
-                    ]
+                "bind": {
+                    "to": "Y"
                 }
             }
         }
     }],
     "objects": {
-        "enableImages": {
-            "displayName": "Enable Images",
+        "image": {
+            "displayName": "Images",
             "properties": {
                 "show": {
                     "displayName": "Enable Images",
                     "type": {
                         "bool": true
                     }
+                },
+                "resize": {
+                    "displayName": "Resize",
+                    "type": {
+                        "bool": true
+                    }
                 }
             }
         },
-        "colorSelector": {
+        "color": {
             "displayName": "Data Colors",
             "properties": {
                 "fill": {
@@ -76,5 +90,6 @@
                 }
             }
         }
-    }
+    },
+    "supportsHighlight": true
 }

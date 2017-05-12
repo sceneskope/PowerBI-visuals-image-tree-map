@@ -4,152 +4,7 @@ module powerbi.extensibility.visual {
     import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
     import tooltip = powerbi.extensibility.utils.tooltip;
     import svgUtils = powerbi.extensibility.utils.svg;
-
-    const colorSelector = { objectName: "colorSelector", propertyName: "fill" };
-    const enableImagesSelector = { objectName: "enableImages", propertyName: "show" };
-    const generalViewOpacitySelector = { objectName: "generalView", propertyName: "opacity" };
-
-    interface Settings {
-        enableImages: {
-            show: boolean;
-        };
-        generalView: {
-            opacity: number;
-        };
-    }
-
-    interface ChartDataPoint {
-        value: number;
-        category: string;
-        color: string;
-        imageUrl?: string;
-        selectionId: ISelectionId;
-    }
-
-    interface ChartDataPointNode extends d3.layout.treemap.Node {
-        datapoint?: ChartDataPoint;
-    }
-
-    interface ChartViewModel {
-        dataPoints: ChartDataPointNode[];
-        dataMax: number;
-        dataMin: number;
-        hasImageUrls: boolean;
-        settings: Settings;
-    }
-
-    const defaultSettings = {
-        enableImages: {
-            show: true
-        },
-        generalView: {
-            opacity: 100
-        }
-    };
-
-    const emptyViewModel = {
-        dataPoints: [],
-        dataMax: 0,
-        dataMin: 1,
-        hasImageUrls: false,
-        settings: defaultSettings
-    };
-
-
-    function visualTransform(options: VisualUpdateOptions, host: IVisualHost) {
-        const dataViews = options.dataViews;
-
-        if (!dataViews
-            || !dataViews[0]
-            || !dataViews[0].categorical
-            || !dataViews[0].categorical.categories
-            || !dataViews[0].categorical.categories[0]) {
-            return emptyViewModel;
-        }
-
-        const categorical = dataViews[0].categorical;
-        const category = categorical.categories[0];
-        const hasValues = !!(categorical.values && categorical.values[0]);
-        const imageUrlColumns = dataViews[0].metadata.columns.filter(c => c && c.type && c.type.misc && c.type.misc.imageUrl);
-        const hasImageUrls = hasValues && imageUrlColumns.length > 0;
-
-        const columnCount = category.values.length;
-        const dataPoints: ChartDataPointNode[] = [];
-
-        let colorPalette: IColorPalette = host.colorPalette;
-        let objects = dataViews[0].metadata.objects;
-        const settings = {
-            enableImages: {
-                show: hasImageUrls && DataViewObjects.getValue<boolean>(objects, enableImagesSelector, defaultSettings.enableImages.show)
-            },
-            generalView: {
-                opacity: DataViewObjects.getValue<number>(objects, generalViewOpacitySelector, defaultSettings.generalView.opacity),
-            }
-        };
-
-        let dataMax: number | undefined = undefined;
-        let dataMin: number | undefined = undefined;
-        let dataSum: number = 0;
-        for (let i = 0; i < columnCount; i++) {
-            let value: number;
-            let url: string | undefined;
-            let selectionId: ISelectionId;
-            const name = category.values[i] + "";
-
-            if (hasValues) {
-                if (hasImageUrls) {
-                    const column = categorical.values[i];
-                    url = column.source.groupName as string;
-                    value = column.values[i] as number;
-                } else {
-                    const column = categorical.values[0];
-                    value = column.values[i] as number;
-                    url = undefined;
-                }
-            }
-            else {
-                url = undefined;
-                value = 1;
-            }
-
-            const defaultColor = colorPalette.getColor(name).value;
-            dataSum += value;
-
-            if (dataMax === undefined) {
-                dataMax = value;
-            } else if (value > dataMax) {
-                dataMax = value;
-            }
-            if (dataMin === undefined) {
-                dataMin = value;
-            } else if (value < dataMin) {
-                dataMin = value;
-            }
-
-            const color = DataViewObjects.getFillColor(objects, colorSelector, defaultColor);
-            const datapoint = {
-                category: name,
-                value: value,
-                color: color,
-                imageUrl: url,
-                selectionId: host.createSelectionIdBuilder()
-                    .withCategory(category, i)
-                    .createSelectionId()
-            };
-
-            dataPoints.push({ datapoint: datapoint, value: datapoint.value });
-        }
-
-
-        return {
-            dataPoints: dataPoints,
-            dataMax: dataMax,
-            dataMin: dataMin,
-            hasImageUrls: hasImageUrls,
-            settings: settings
-        };
-
-    }
+    import ColorHelper = powerbi.extensibility.utils.color.ColorHelper;
 
     export class Visual implements IVisual {
         private readonly formatter: utils.formatting.IValueFormatter;
@@ -159,8 +14,7 @@ module powerbi.extensibility.visual {
         private readonly selectionManager: ISelectionManager;
         private readonly defs: d3.Selection<SVGDefsElement>;
         private tooltipServiceWrapper: tooltip.ITooltipServiceWrapper;
-        private settings: Settings;
-        private dataPoints: ChartDataPointNode[];
+        private viewModel?: ChartViewModel;
 
         static Config = {
             solidOpacity: 1,
@@ -182,9 +36,9 @@ module powerbi.extensibility.visual {
 
         public update(options: VisualUpdateOptions) {
             try {
-                const viewModel: ChartViewModel = visualTransform(options, this.host);
-                const settings = this.settings = viewModel.settings;
-                const dataPoints = this.dataPoints = viewModel.dataPoints;
+                const viewModel = this.viewModel = visualTransform(options, this.host);
+                const settings = viewModel.settings;
+                const dataPoints = viewModel.dataPoints;
 
                 const width = options.viewport.width;
                 const height = options.viewport.height;
@@ -199,25 +53,50 @@ module powerbi.extensibility.visual {
                     return;
                 }
 
-                const useImages = viewModel.hasImageUrls && settings.enableImages.show;
+                const useImages = viewModel.hasImageUrls && settings.image.show;
 
 
                 if (useImages) {
-                    const patterns = this.defs.selectAll("pattern").data(viewModel.dataPoints);
                     const imageWidth = radius;
                     const imageHeight = (imageWidth / 1024) * 768;
-                    patterns.enter()
+                    const fixedPatterns = this.defs
+                        .selectAll(".fixedPattern")
+                        .data(viewModel.dataPoints);
+
+                    const resizedPatterns = this.defs
+                        .selectAll(".resizedPattern")
+                        .data(viewModel.dataPoints);
+
+                    fixedPatterns
+                        .enter()
                         .append("pattern")
+                        .attr("class", "fixedPattern")
                         .attr("patternUnits", "userSpaceOnUse")
                         .attr("width", imageWidth)
                         .attr("height", imageHeight)
-                        .attr("id", d => `bg-${d.datapoint.category}`)
+                        .attr("id", d => `fixed-${d.datapoint.uri}`)
                         .append("image")
-                        .attr("xlink:href", d => d.datapoint.imageUrl)
                         .attr("width", imageWidth)
-                        .attr("height", imageHeight);
+                        .attr("height", imageHeight)
+                        .attr("xlink:href", d => d.datapoint.imageUrl);
 
-                    patterns.exit()
+                    fixedPatterns.exit()
+                        .remove();
+
+                    resizedPatterns
+                        .enter()
+                        .append("pattern")
+                        .attr("class", "resizedPattern")
+                        .attr("patternUnits", "userSpaceOnUse")
+                        .attr("width", imageWidth)
+                        .attr("height", imageWidth)
+                        .attr("id", d => `resize-${d.datapoint.uri}`)
+                        .append("image")
+                        .attr("width", imageWidth)
+                        .attr("height", imageWidth)
+                        .attr("xlink:href", d => d.datapoint.imageUrl);
+
+                    resizedPatterns.exit()
                         .remove();
                 }
 
@@ -245,13 +124,27 @@ module powerbi.extensibility.visual {
                     .attr("transform", d => `translate(${d.x}, ${d.y})`)
                     .attr("width", d => d.dx)
                     .attr("height", d => d.dy)
-                    .attr("fill-opacity", viewModel.settings.generalView.opacity / 100);
+                    .attr("fill-opacity", d => {
+                        if (d.datapoint) {
+                        if ((d.datapoint.highlighted === undefined) || d.datapoint.highlighted) {
+                            return viewModel.settings.generalView.opacity / 100;
+                        } else {
+                            return Visual.Config.transparentOpacity
+                        }
+                        } else {
+                            return 0;
+                        }
+                    });
 
                 if (useImages) {
                     cells
                         .attr("fill", d => {
                             if (d.datapoint) {
-                                return `url(#bg-${d.datapoint.category})`;
+                                if (d.datapoint.resize) {
+                                    return `url(#resize-${d.datapoint.uri})`;
+                                } else {
+                                    return `url(#fixed-${d.datapoint.uri})`;
+                                }
                             } else {
                                 return "#000000";
                             }
@@ -308,58 +201,45 @@ module powerbi.extensibility.visual {
         }
 
         public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): VisualObjectInstanceEnumeration {
-            let objectName = options.objectName;
-            let objectEnumeration: VisualObjectInstance[] = [];
-
-            switch (objectName) {
-                case "enableImages":
-                    objectEnumeration.push({
-                        objectName: objectName,
-                        properties: {
-                            show: this.settings.enableImages.show,
-                        },
-                        selector: null
-                    });
-                    break;
-
-                case "colorSelector":
-                    for (let dataPoint of this.dataPoints) {
-                        objectEnumeration.push({
-                            objectName: objectName,
-                            displayName: dataPoint.datapoint.category,
-                            properties: {
-                                fill: {
-                                    solid: {
-                                        color: dataPoint.datapoint.color
+            try {
+                const settings = this.viewModel ? this.viewModel.settings : Settings.getDefault() as Settings;
+                const instanceEnumeration = Settings.enumerateObjectInstances(settings, options);
+                if (options.objectName === "color") {
+                    for (let dataPoint of this.viewModel.dataPoints) {
+                        this.addAnInstanceToEnumeration(instanceEnumeration,
+                            {
+                                objectName: options.objectName,
+                                displayName: dataPoint.datapoint.category,
+                                properties: {
+                                    fill: {
+                                        solid: {
+                                            color: dataPoint.datapoint.color
+                                        }
                                     }
-                                }
-                            },
-                            selector: dataPoint.datapoint.selectionId
-                        });
+                                },
+                                selector: ColorHelper.normalizeSelector(dataPoint.datapoint.selectionId.getSelector(), false)
+                            });
                     }
-                    break;
-
-                case "generalView":
-                    objectEnumeration.push({
-                        objectName: objectName,
-                        properties: {
-                            opacity: this.settings.generalView.opacity,
-                        },
-                        validValues: {
-                            opacity: {
-                                numberRange: {
-                                    min: 10,
-                                    max: 100
-                                }
-                            }
-                        },
-                        selector: null
-                    });
-                    break;
+                }
+                return instanceEnumeration || [];
             }
-
-            return objectEnumeration;
+            catch (ex) {
+                console.warn(ex);
+                throw ex;
+            }
         }
 
+        private addAnInstanceToEnumeration(
+            instanceEnumeration: VisualObjectInstanceEnumeration,
+            instance: VisualObjectInstance): void {
+
+            if ((instanceEnumeration as VisualObjectInstanceEnumerationObject).instances) {
+                (instanceEnumeration as VisualObjectInstanceEnumerationObject)
+                    .instances
+                    .push(instance);
+            } else {
+                (instanceEnumeration as VisualObjectInstance[]).push(instance);
+            }
+        }
     }
 }
